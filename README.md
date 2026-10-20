@@ -17,7 +17,10 @@ any state-management approach (or none at all).
 - Four app-controlled states: `idle`, `verifying`, `success`, `error`.
 - Fan-out animation on `verifying`, with a rotating gradient loading border.
 - Stack animation with a checkmark on `success`.
-- Automatic fan-back to editable cards on `error`.
+- Automatic fan-back to editable cards on `error`, with an `onRestored` hook.
+- SMS / email one-time-code autofill out of the box.
+- `enabled` / `readOnly`, custom `inputFormatters`, optional `errorText`, and
+  an accessibility label.
 - Optional `OtpStackController` for apps that prefer a `ChangeNotifier`.
 - No Provider, Bloc, Riverpod or backend dependency.
 
@@ -34,9 +37,9 @@ import 'package:otp_stack/otp_stack.dart';
 
 ## Usage
 
-The widget is controlled by the `status` you pass in. When the user finishes
-typing, `onCompleted` fires and **you** start your request, then flip the
-status when the response arrives.
+The recommended way is to pass the `status` you already hold. When the user
+finishes typing, `onCompleted` fires and **you** start your request, then flip
+the status when the response arrives.
 
 ```dart
 class _VerifyScreenState extends State<VerifyScreen> {
@@ -49,9 +52,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
     if (!mounted) return;
 
     setState(() {
-      _status = valid
-          ? OtpStackStatus.success
-          : OtpStackStatus.error;
+      _status = valid ? OtpStackStatus.success : OtpStackStatus.error;
     });
   }
 
@@ -60,6 +61,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
     return OtpStackField(
       length: 6,
       status: _status,
+      onRestored: (_) => setState(() => _status = OtpStackStatus.idle),
       onChanged: (otp) => debugPrint('otp: $otp'),
       onCompleted: _onCompleted,
     );
@@ -76,13 +78,15 @@ class _VerifyScreenState extends State<VerifyScreen> {
 | `success`    | Collapses the cards into one card with a checkmark.                |
 | `error`      | Holds the fan briefly, then fans back to editable cards.           |
 
-`onStatusChanged` is emitted when the widget returns to `idle` on its own
-(after the error animation), which is handy when the app mirrors the status.
+When `error` finishes restoring the editable cards, `onRestored` fires with
+`OtpStackStatus.idle`. Use it to reset your own status so the UI and the field
+stay in sync.
 
 ### Using a controller
 
 If you prefer to drive everything from a `ChangeNotifier` (no Provider needed),
-attach an `OtpStackController`. It takes precedence over the `status` argument.
+attach an `OtpStackController`. It takes precedence over the `status` argument,
+and the two must not be used together.
 
 ```dart
 final _controller = OtpStackController();
@@ -94,13 +98,17 @@ OtpStackField(
     final ok = await verifyOtp(otp);
     _controller.setStatus(ok ? OtpStackStatus.success : OtpStackStatus.error);
   },
+  onRestored: (_) => _controller.setStatus(OtpStackStatus.idle),
 );
 
 // Elsewhere:
 _controller.otp;          // current code
-_controller.clear();      // clear the boxes
+_controller.clear();      // clear the boxes (keeps the status)
 _controller.reset();      // clear + back to idle
 ```
+
+`OtpStackController` is a `ChangeNotifier`; call `dispose()` when you are done
+with it.
 
 ## Customization
 
@@ -108,6 +116,17 @@ _controller.reset();      // clear + back to idle
 OtpStackField(
   length: 6,
   status: _status,
+  enabled: true,
+  readOnly: false,
+  obscureText: false,
+  keyboardType: TextInputType.number,
+  inputFormatters: null,           // defaults to digits only
+  autofillHints: const [AutofillHints.oneTimeCode],
+  textInputAction: null,           // next, or done on the last field
+  cursorColor: null,               // defaults to primaryColor
+  semanticLabel: 'One-time code',
+  errorText: _error,
+  errorColor: Color(0xFFE15A5A),
   cardWidth: 46,
   cardHeight: 58,
   cardGap: 4,
@@ -117,35 +136,51 @@ OtpStackField(
   successColor: Color(0xFF20A56B),
   textStyle: TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
   cardTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-  keyboardType: TextInputType.number,
-  obscureText: false,
   autofocus: true,
   onChanged: (otp) {},
   onCompleted: (otp) {},
 )
 ```
 
-| Parameter       | Default                     | Description                                   |
-| --------------- | --------------------------- | --------------------------------------------- |
-| `length`        | `6`                         | Number of digits.                             |
-| `status`        | `OtpStackStatus.idle`       | App-controlled state (ignored with controller).|
-| `controller`    | `null`                      | Optional `OtpStackController`.                |
-| `onChanged`     | `null`                      | Called with the full code on every change.    |
-| `onCompleted`   | `null`                      | Called once each time the code is complete.   |
-| `onStatusChanged` | `null`                    | Called when the widget returns to `idle`.     |
-| `autofocus`     | `false`                     | Focus the first field on build/restore.       |
-| `cardWidth`     | `46`                        | Card width in the fanned layout.              |
-| `cardHeight`    | `58`                        | Card height.                                  |
-| `cardGap`       | `4`                         | Gap between fanned cards.                     |
-| `height`        | `86`                        | Total field height.                           |
-| `fanSpread`     | `15`                        | How far outer cards spread from the center.   |
-| `primaryColor`  | `0xFF6675FF`                | Focus / verifying color.                      |
-| `successColor`  | `0xFF20A56B`                | Success check color.                          |
+| Parameter         | Default                     | Description                                        |
+| ----------------- | --------------------------- | -------------------------------------------------- |
+| `length`          | `6`                         | Number of digits.                                  |
+| `status`          | `null` (idle)               | App-controlled state. Mutually exclusive with `controller`. |
+| `controller`      | `null`                      | Optional `OtpStackController`.                     |
+| `onChanged`       | `null`                      | Called with the full code on every change.         |
+| `onCompleted`     | `null`                      | Called once each time the code is complete.        |
+| `onRestored`      | `null`                      | Called with `idle` after the error animation.      |
+| `autofocus`       | `false`                     | Focus the first field on build/restore.            |
+| `enabled`         | `true`                      | Whether the fields accept input.                   |
+| `readOnly`        | `false`                     | Focusable but not editable.                        |
+| `obscureText`     | `false`                     | Hide the entered digits.                           |
+| `keyboardType`    | `TextInputType.number`      | Keyboard type.                                     |
+| `inputFormatters` | digits only                 | Override to allow other characters.                |
+| `autofillHints`   | `[AutofillHints.oneTimeCode]` | Triggers SMS/email autofill.                     |
+| `textInputAction` | next / done                 | Override the keyboard action.                      |
+| `cursorColor`     | `primaryColor`              | Cursor color.                                      |
+| `semanticLabel`   | `null`                      | Accessibility label for the whole field.           |
+| `errorText`       | `null`                      | Optional message shown under the field.            |
+| `errorColor`      | `0xFFE15A5A`                | Color of `errorText`.                              |
+| `cardWidth`       | `46`                        | Card width in the fanned layout.                   |
+| `cardHeight`      | `58`                        | Card height.                                       |
+| `cardGap`         | `4`                         | Gap between fanned cards (and input padding).      |
+| `height`          | `86`                        | Total field height.                                |
+| `fanSpread`       | `15`                        | How far outer cards spread from the center.        |
+| `primaryColor`    | `0xFF6675FF`                | Focus / verifying color.                           |
+| `successColor`    | `0xFF20A56B`                | Success check color.                               |
+| `textStyle`       | `22 / w600`                 | Digit style while editing.                         |
+| `cardTextStyle`   | `20 / w700`                 | Digit style on the fanned / stacked cards.         |
 
 > The cards keep their light-blue border in every state; only the two center
-> cards turn `primaryColor` while verifying, exactly like the reference design.
-> Error feedback is shown by the app (status text/button), not by recoloring
-> the cards.
+> cards turn `primaryColor` while verifying. Error feedback is shown by the app
+> (via `errorText` or your own status UI), not by recoloring the cards.
+
+## Accessibility
+
+The widget renders one `TextField` per digit, so set `semanticLabel` to present
+the group as a single one-time code to screen readers. SMS autofill works out
+of the box through `autofillHints`.
 
 ## Example
 
@@ -162,5 +197,7 @@ flutter run
 
 - The package deliberately owns no verification logic; only the animations and
   input handling.
+- `OtpBorderPainter` and the field's state class are internal and are not
+  exported from `package:otp_stack/otp_stack.dart`.
 - Report issues on the
   [issue tracker](https://github.com/Arunkumar-flutter/otp_stack/issues).

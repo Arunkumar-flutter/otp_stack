@@ -12,8 +12,9 @@ void main() {
     expect(find.byType(OtpStackField), findsOneWidget);
   });
 
-  testWidgets('typing a full code starts the verification animation',
-      (tester) async {
+  testWidgets('typing a full code starts the verification animation', (
+    tester,
+  ) async {
     await tester.pumpWidget(const OtpStackExampleApp());
     expect(find.byType(TextField), findsNWidgets(6));
 

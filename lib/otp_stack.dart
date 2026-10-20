@@ -2,7 +2,6 @@
 /// success card.
 library;
 
-export 'src/otp_border_painter.dart';
 export 'src/otp_stack_controller.dart';
 export 'src/otp_stack_field.dart';
 export 'src/otp_stack_status.dart';

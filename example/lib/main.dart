@@ -124,6 +124,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 OtpStackField(
                   controller: _controller,
                   autofocus: true,
+                  semanticLabel: 'One-time code',
+                  // The field auto-restores to editable cards after an error;
+                  // keep the controller status in sync.
+                  onRestored: (_) => _controller.setStatus(OtpStackStatus.idle),
                   onChanged: (otp) => setState(() => _otp = otp),
                   onCompleted: _onCompleted,
                 ),
@@ -131,10 +135,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 _statusText(),
                 const SizedBox(height: 18),
                 if (_status == OtpStackStatus.idle)
-                  TextButton(
-                    onPressed: () {},
-                    child: const Text('Resend OTP'),
-                  ),
+                  TextButton(onPressed: () {}, child: const Text('Resend OTP')),
                 if (_status == OtpStackStatus.success)
                   FilledButton.icon(
                     onPressed: () {},
@@ -157,25 +158,25 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   Widget _statusText() {
     final (title, subtitle, color) = switch (_status) {
       OtpStackStatus.idle => (
-          'Enter your code',
-          _otp.isEmpty ? 'Your code will be verified securely.' : 'Code: $_otp',
-          const Color(0xFF777D95),
-        ),
+        'Enter your code',
+        _otp.isEmpty ? 'Your code will be verified securely.' : 'Code: $_otp',
+        const Color(0xFF777D95),
+      ),
       OtpStackStatus.verifying => (
-          'Verifying OTP...',
-          'Please wait a moment.',
-          const Color(0xFF6675FF),
-        ),
+        'Verifying OTP...',
+        'Please wait a moment.',
+        const Color(0xFF6675FF),
+      ),
       OtpStackStatus.success => (
-          'OTP verified!',
-          'Your number has been verified.',
-          const Color(0xFF20A56B),
-        ),
+        'OTP verified!',
+        'Your number has been verified.',
+        const Color(0xFF20A56B),
+      ),
       OtpStackStatus.error => (
-          'Invalid OTP',
-          'Enter any code except 000000 to see the demo succeed.',
-          Colors.redAccent,
-        ),
+        'Invalid OTP',
+        'Enter any code except 000000 to see the demo succeed.',
+        Colors.redAccent,
+      ),
     };
 
     return AnimatedSwitcher(

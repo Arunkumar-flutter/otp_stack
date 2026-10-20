@@ -1,8 +1,8 @@
-import 'package:flutter/foundation.dart' show internal;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'otp_border_painter.dart';
+import 'otp_stack_binding.dart';
 import 'otp_stack_controller.dart';
 import 'otp_stack_status.dart';
 
@@ -36,17 +36,31 @@ enum _DisplayMode {
 ///   },
 /// )
 /// ```
+///
+/// Pass either [status] or [controller], not both. When [controller] is
+/// provided it owns the status and takes precedence.
 class OtpStackField extends StatefulWidget {
   /// Creates an animated OTP input.
   const OtpStackField({
     super.key,
     this.length = 6,
-    this.status = OtpStackStatus.idle,
+    this.status,
     this.controller,
     this.onChanged,
     this.onCompleted,
-    this.onStatusChanged,
+    this.onRestored,
     this.autofocus = false,
+    this.enabled = true,
+    this.readOnly = false,
+    this.obscureText = false,
+    this.keyboardType = TextInputType.number,
+    this.inputFormatters,
+    this.autofillHints = const [AutofillHints.oneTimeCode],
+    this.textInputAction,
+    this.cursorColor,
+    this.semanticLabel,
+    this.errorText,
+    this.errorColor = const Color(0xFFE15A5A),
     this.cardWidth = 46,
     this.cardHeight = 58,
     this.cardGap = 4,
@@ -59,15 +73,20 @@ class OtpStackField extends StatefulWidget {
       fontSize: 20,
       fontWeight: FontWeight.w700,
     ),
-    this.keyboardType = TextInputType.number,
-    this.obscureText = false,
-  }) : assert(length > 0, 'length must be greater than 0');
+  }) : assert(length > 0, 'length must be greater than 0'),
+       assert(
+         controller == null || status == null,
+         'Provide either `status` or `controller`, not both.',
+       );
 
   /// Number of OTP digits.
   final int length;
 
-  /// Current verification status. Ignored when [controller] is provided.
-  final OtpStackStatus status;
+  /// Current verification status.
+  ///
+  /// Ignored when [controller] is provided. When omitted (and no controller is
+  /// given) the field starts in [OtpStackStatus.idle].
+  final OtpStackStatus? status;
 
   /// Optional controller to drive the status and value programmatically.
   ///
@@ -80,12 +99,53 @@ class OtpStackField extends StatefulWidget {
   /// Called once each time the OTP becomes complete.
   final ValueChanged<String>? onCompleted;
 
-  /// Called when the widget internally returns to [OtpStackStatus.idle] after
-  /// playing the error animation. Useful when the app mirrors the status.
-  final ValueChanged<OtpStackStatus>? onStatusChanged;
+  /// Called when the widget finishes restoring the editable cards after an
+  /// error. Use it to set your own status back to [OtpStackStatus.idle].
+  final ValueChanged<OtpStackStatus>? onRestored;
 
   /// Whether to focus the first field as soon as the widget is built.
   final bool autofocus;
+
+  /// Whether the fields accept input. When `false` the cards are disabled.
+  final bool enabled;
+
+  /// Whether the fields are read-only (focusable but not editable).
+  final bool readOnly;
+
+  /// Whether to hide the entered digits.
+  final bool obscureText;
+
+  /// Keyboard type for the input fields.
+  final TextInputType keyboardType;
+
+  /// Formatters applied to each field.
+  ///
+  /// Defaults to digits only. Provide your own list to allow other characters
+  /// (for example an alphanumeric code).
+  final List<TextInputFormatter>? inputFormatters;
+
+  /// Autofill hints, used to trigger SMS/email one-time-code autofill.
+  ///
+  /// Defaults to [AutofillHints.oneTimeCode].
+  final Iterable<String>? autofillHints;
+
+  /// Overrides the default `TextInputAction` (next, or done on the last field).
+  final TextInputAction? textInputAction;
+
+  /// Cursor color. Defaults to [primaryColor].
+  final Color? cursorColor;
+
+  /// Accessibility label announced for the whole field.
+  ///
+  /// Because the widget renders one `TextField` per digit, setting this label
+  /// helps screen readers present it as a single one-time code.
+  final String? semanticLabel;
+
+  /// Optional message shown under the field (for example on an error).
+  final String? errorText;
+
+  /// Color of [errorText].
+  final Color errorColor;
 
   /// Width of a single card in the fanned / stacked layout.
   final double cardWidth;
@@ -114,22 +174,17 @@ class OtpStackField extends StatefulWidget {
   /// Text style of the digits on the fanned / stacked cards.
   final TextStyle cardTextStyle;
 
-  /// Keyboard type for the input fields.
-  final TextInputType keyboardType;
-
-  /// Whether to hide the entered digits.
-  final bool obscureText;
-
   @override
-  State<OtpStackField> createState() => OtpStackFieldState();
+  State<OtpStackField> createState() => _OtpStackFieldState();
 }
 
 /// State for [OtpStackField].
 ///
-/// Exposed so an [OtpStackController] can read the current value and drive the
-/// status. All members used by the controller are marked `@internal`.
-class OtpStackFieldState extends State<OtpStackField>
-    with TickerProviderStateMixin {
+/// Private; the [OtpStackController] talks to it through
+/// [OtpStackFieldBinding].
+class _OtpStackFieldState extends State<OtpStackField>
+    with TickerProviderStateMixin
+    implements OtpStackFieldBinding {
   static final RegExp _nonDigits = RegExp(r'\D');
 
   late List<TextEditingController> _controllers;
@@ -152,23 +207,26 @@ class OtpStackFieldState extends State<OtpStackField>
   OtpStackController? _controllerRef;
   VoidCallback? _controllerListener;
 
+  /// Whether the default digits-only formatter is in use.
+  bool get _digitsOnly => widget.inputFormatters == null;
+
   /// The current OTP string.
-  @internal
+  @override
   String get otp => _controllers.map((c) => c.text).join();
 
   /// The current digits, one entry per field.
-  @internal
+  @override
   List<String> get digits =>
       List<String>.unmodifiable(_controllers.map((c) => c.text));
 
   /// Whether every field holds a digit.
-  @internal
+  @override
   bool get isComplete =>
       _controllers.length == widget.length &&
       _controllers.every((c) => c.text.isNotEmpty);
 
   OtpStackStatus get _resolvedStatus =>
-      widget.controller?.status ?? widget.status;
+      widget.controller?.status ?? widget.status ?? OtpStackStatus.idle;
 
   @override
   void initState() {
@@ -239,7 +297,7 @@ class OtpStackFieldState extends State<OtpStackField>
   // Controller wiring
   // ---------------------------------------------------------------------------
 
-  @internal
+  @override
   void attachController(OtpStackController controller) {
     _detachController();
     _controllerRef = controller;
@@ -247,7 +305,7 @@ class OtpStackFieldState extends State<OtpStackField>
     controller.addListener(_controllerListener!);
   }
 
-  @internal
+  @override
   void detachController() => _detachController();
 
   void _detachController() {
@@ -357,7 +415,7 @@ class OtpStackFieldState extends State<OtpStackField>
     if (!mounted || token != _errorToken) return;
 
     setState(() => _mode = _DisplayMode.input);
-    widget.onStatusChanged?.call(OtpStackStatus.idle);
+    widget.onRestored?.call(OtpStackStatus.idle);
     if (widget.autofocus) {
       _focusFirstAfterFrame();
     }
@@ -367,12 +425,15 @@ class OtpStackFieldState extends State<OtpStackField>
   // Input handling
   // ---------------------------------------------------------------------------
 
+  String _sanitize(String value) =>
+      _digitsOnly ? value.replaceAll(_nonDigits, '') : value;
+
   void _onChanged(int index, String value) {
-    if (_mode != _DisplayMode.input) return;
+    if (!widget.enabled || _mode != _DisplayMode.input) return;
 
-    final clean = value.replaceAll(_nonDigits, '');
+    final clean = _sanitize(value);
 
-    // Pasting several digits into a single field fills every box from the
+    // Pasting several characters into a single field fills every box from the
     // start, exactly like most banking apps do.
     if (clean.length > 1) {
       final pasted = clean.substring(0, widget.length);
@@ -402,6 +463,7 @@ class OtpStackFieldState extends State<OtpStackField>
   }
 
   KeyEventResult _onKey(int index, KeyEvent event) {
+    if (!widget.enabled) return KeyEventResult.ignored;
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.backspace &&
         _controllers[index].text.isEmpty &&
@@ -446,16 +508,16 @@ class OtpStackFieldState extends State<OtpStackField>
   // Controller-facing helpers
   // ---------------------------------------------------------------------------
 
-  @internal
+  @override
   void setOtp(String value) {
-    final clean = value.replaceAll(_nonDigits, '');
+    final clean = _sanitize(value);
     for (var i = 0; i < _controllers.length; i++) {
       _controllers[i].text = i < clean.length ? clean[i] : '';
     }
     _notifyChange();
   }
 
-  @internal
+  @override
   void clearDigits() {
     for (final controller in _controllers) {
       if (controller.text.isNotEmpty) {
@@ -471,7 +533,7 @@ class OtpStackFieldState extends State<OtpStackField>
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
+    final field = LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth.isFinite
             ? constraints.maxWidth
@@ -497,6 +559,32 @@ class OtpStackFieldState extends State<OtpStackField>
           ),
         );
       },
+    );
+
+    final column = widget.errorText == null
+        ? field
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              field,
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Text(
+                  widget.errorText!,
+                  style: TextStyle(color: widget.errorColor, fontSize: 13),
+                ),
+              ),
+            ],
+          );
+
+    if (widget.semanticLabel == null) {
+      return column;
+    }
+    return Semantics(
+      label: widget.semanticLabel,
+      container: true,
+      child: column,
     );
   }
 
@@ -533,15 +621,22 @@ class OtpStackFieldState extends State<OtpStackField>
             child: TextField(
               controller: _controllers[index],
               focusNode: _focusNodes[index],
+              enabled: widget.enabled,
+              readOnly: widget.readOnly,
               keyboardType: widget.keyboardType,
               obscureText: widget.obscureText,
+              autofillHints: widget.autofillHints,
               textAlign: TextAlign.center,
               style: widget.textStyle,
-              cursorColor: widget.primaryColor,
-              textInputAction: index == widget.length - 1
-                  ? TextInputAction.done
-                  : TextInputAction.next,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              cursorColor: widget.cursorColor ?? widget.primaryColor,
+              textInputAction:
+                  widget.textInputAction ??
+                  (index == widget.length - 1
+                      ? TextInputAction.done
+                      : TextInputAction.next),
+              inputFormatters:
+                  widget.inputFormatters ??
+                  [FilteringTextInputFormatter.digitsOnly],
               maxLength: widget.length,
               decoration: const InputDecoration(
                 counterText: '',

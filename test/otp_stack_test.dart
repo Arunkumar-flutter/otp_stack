@@ -237,4 +237,80 @@ void main() {
     await tester.pump();
     expect(controller.otp, '');
   });
+
+  test('rejects providing both status and controller', () {
+    final controller = OtpStackController();
+    addTearDown(controller.dispose);
+
+    expect(
+      () => OtpStackField(status: OtpStackStatus.idle, controller: controller),
+      throwsAssertionError,
+    );
+  });
+
+  testWidgets('enabled false disables the fields', (tester) async {
+    await tester.pumpWidget(wrap(const OtpStackField(enabled: false)));
+    final field = tester.widget<TextField>(find.byType(TextField).first);
+    expect(field.enabled, isFalse);
+  });
+
+  testWidgets('readOnly makes the fields non-editable', (tester) async {
+    await tester.pumpWidget(wrap(const OtpStackField(readOnly: true)));
+    final field = tester.widget<TextField>(find.byType(TextField).first);
+    expect(field.readOnly, isTrue);
+  });
+
+  testWidgets('custom inputFormatters allow letters', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        OtpStackField(
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+          ],
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'A');
+    await tester.pump();
+    expect(find.text('A'), findsOneWidget);
+  });
+
+  testWidgets('defaults to one-time-code autofill', (tester) async {
+    await tester.pumpWidget(wrap(const OtpStackField()));
+    final field = tester.widget<TextField>(find.byType(TextField).first);
+    expect(field.autofillHints, contains(AutofillHints.oneTimeCode));
+  });
+
+  testWidgets('renders errorText under the field', (tester) async {
+    await tester.pumpWidget(
+      wrap(const OtpStackField(errorText: 'Invalid code')),
+    );
+    expect(find.text('Invalid code'), findsOneWidget);
+  });
+
+  testWidgets('applies the semantic label', (tester) async {
+    await tester.pumpWidget(
+      wrap(const OtpStackField(semanticLabel: 'One-time code')),
+    );
+    expect(find.bySemanticsLabel('One-time code'), findsOneWidget);
+  });
+
+  testWidgets('onRestored fires after the error animation', (tester) async {
+    OtpStackStatus? restored;
+    await tester.pumpWidget(
+      wrap(
+        OtpStackField(
+          status: OtpStackStatus.error,
+          onRestored: (status) => restored = status,
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(restored, OtpStackStatus.idle);
+  });
 }
