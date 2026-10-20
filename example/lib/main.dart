@@ -34,14 +34,29 @@ class OtpVerificationScreen extends StatefulWidget {
 
 class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   final _controller = OtpStackController();
-  OtpStackStatus _status = OtpStackStatus.idle;
   String _otp = '';
 
   @override
+  void initState() {
+    super.initState();
+    // Rebuild when the controller status changes so the UI follows the
+    // animation (verifying -> success / error -> idle).
+    _controller.addListener(_onControllerChanged);
+  }
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     super.dispose();
   }
+
+  /// The controller owns the status, so the UI reads it from there.
+  OtpStackStatus get _status => _controller.status;
 
   /// DEMO ONLY: replace this with your real API/repository call.
   Future<bool> _verify(String otp) async {
@@ -50,23 +65,21 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   }
 
   Future<void> _onCompleted(String otp) async {
-    setState(() {
-      _otp = otp;
-      _status = OtpStackStatus.verifying;
-    });
+    setState(() => _otp = otp);
+
+    // 1. Tell the package to fan the cards out and show the loading border.
+    _controller.setStatus(OtpStackStatus.verifying);
 
     final valid = await _verify(otp);
     if (!mounted) return;
 
-    setState(() {
-      _status = valid ? OtpStackStatus.success : OtpStackStatus.error;
-    });
+    // 2. Tell the package the result; it plays the matching animation.
+    _controller.setStatus(
+      valid ? OtpStackStatus.success : OtpStackStatus.error,
+    );
   }
 
-  void _retry() {
-    setState(() => _status = OtpStackStatus.idle);
-    _controller.clear();
-  }
+  void _retry() => _controller.reset();
 
   @override
   Widget build(BuildContext context) {
@@ -118,7 +131,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 _statusText(),
                 const SizedBox(height: 18),
                 if (_status == OtpStackStatus.idle)
-                  TextButton(onPressed: () {}, child: const Text('Resend OTP')),
+                  TextButton(
+                    onPressed: () {},
+                    child: const Text('Resend OTP'),
+                  ),
                 if (_status == OtpStackStatus.success)
                   FilledButton.icon(
                     onPressed: () {},
@@ -141,25 +157,25 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   Widget _statusText() {
     final (title, subtitle, color) = switch (_status) {
       OtpStackStatus.idle => (
-        'Enter your code',
-        _otp.isEmpty ? 'Your code will be verified securely.' : 'Code: $_otp',
-        const Color(0xFF777D95),
-      ),
+          'Enter your code',
+          _otp.isEmpty ? 'Your code will be verified securely.' : 'Code: $_otp',
+          const Color(0xFF777D95),
+        ),
       OtpStackStatus.verifying => (
-        'Verifying OTP...',
-        'Please wait a moment.',
-        const Color(0xFF6675FF),
-      ),
+          'Verifying OTP...',
+          'Please wait a moment.',
+          const Color(0xFF6675FF),
+        ),
       OtpStackStatus.success => (
-        'OTP verified!',
-        'Your number has been verified.',
-        const Color(0xFF20A56B),
-      ),
+          'OTP verified!',
+          'Your number has been verified.',
+          const Color(0xFF20A56B),
+        ),
       OtpStackStatus.error => (
-        'Invalid OTP',
-        'Enter any code except 000000 to see the demo succeed.',
-        Colors.redAccent,
-      ),
+          'Invalid OTP',
+          'Enter any code except 000000 to see the demo succeed.',
+          Colors.redAccent,
+        ),
     };
 
     return AnimatedSwitcher(

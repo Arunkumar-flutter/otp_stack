@@ -119,6 +119,35 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 
+  testWidgets('fan positions match the reference math', (tester) async {
+    await tester.pumpWidget(
+      wrap(const OtpStackField(status: OtpStackStatus.verifying)),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300)); // fan complete
+
+    const width = 800.0; // default test surface width
+    const cardWidth = 46.0;
+    const spread = 15.0;
+    final centerLeft = (width - cardWidth) / 2;
+
+    // fanLeft = centerLeft + side * 15, with side = i - 2.5 and draw order
+    // [0, 5, 1, 4, 2, 3], exactly like the reference implementation.
+    final expectedLefts = <double>[
+      for (final i in const [0, 5, 1, 4, 2, 3]) centerLeft + (i - 2.5) * spread,
+    ];
+
+    final lefts = tester
+        .widgetList<Positioned>(find.byType(Positioned))
+        .map((positioned) => positioned.left)
+        .whereType<double>()
+        .toList();
+
+    for (final expected in expectedLefts) {
+      expect(lefts, contains(expected));
+    }
+  });
+
   testWidgets('success stacks the cards and shows a checkmark', (tester) async {
     await tester.pumpWidget(
       wrap(const OtpStackField(status: OtpStackStatus.success)),
