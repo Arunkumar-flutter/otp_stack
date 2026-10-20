@@ -1,0 +1,27 @@
+name: otp_stack
+description: "A customizable Flutter OTP input widget with animated digit cards, loading states, and success and error animations for easy API integration."
+version: 0.0.2
+homepage: https://pub.dev/packages/otp_stack
+repository: https://github.com/Arunkumar-flutter/otp_stack
+issue_tracker: https://github.com/Arunkumar-flutter/otp_stack/issues
+topics:
+  - otp
+  - pin
+  - verification
+  - animation
+  - ui
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
