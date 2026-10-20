@@ -126,9 +126,33 @@ void main() {
 
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
+    // Let the stack-completion callback flip `_stacking` off and rebuild.
+    await tester.pump();
 
     expect(find.byType(TextField), findsNothing);
-    expect(find.byIcon(Icons.check_rounded), findsWidgets);
+    // Exactly the two center cards show a check; the loading overlay is gone.
+    expect(find.byIcon(Icons.check_rounded), findsNWidgets(2));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('success shows the center overlay only while stacking', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(const OtpStackField(status: OtpStackStatus.success)),
+    );
+
+    await tester.pump();
+    // Mid-collapse: the center overlay carries the check, the two center
+    // cards are still empty (the reference's `stacking` phase).
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+
+    // Once the collapse finishes the overlay disappears and the two center
+    // cards take over the check (the reference's `success` phase).
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump();
+    expect(find.byIcon(Icons.check_rounded), findsNWidgets(2));
   });
 
   testWidgets('error restores the editable inputs', (tester) async {

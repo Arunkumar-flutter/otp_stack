@@ -54,7 +54,6 @@ class OtpStackField extends StatefulWidget {
     this.fanSpread = 15,
     this.primaryColor = const Color(0xFF6675FF),
     this.successColor = const Color(0xFF20A56B),
-    this.errorColor = const Color(0xFFE15A5A),
     this.textStyle = const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
     this.cardTextStyle = const TextStyle(
       fontSize: 20,
@@ -109,9 +108,6 @@ class OtpStackField extends StatefulWidget {
   /// Color used for the success state.
   final Color successColor;
 
-  /// Color used for the error state.
-  final Color errorColor;
-
   /// Text style of the digits while editing.
   final TextStyle textStyle;
 
@@ -145,6 +141,11 @@ class OtpStackFieldState extends State<OtpStackField>
 
   OtpStackStatus _status = OtpStackStatus.idle;
   _DisplayMode _mode = _DisplayMode.input;
+
+  /// True while the success cards are still collapsing into the center card.
+  /// Mirrors the reference's `stacking` phase (distinct from `success`).
+  bool _stacking = false;
+
   bool _lastNotifiedComplete = false;
   int _errorToken = 0;
 
@@ -292,6 +293,7 @@ class OtpStackFieldState extends State<OtpStackField>
 
     switch (status) {
       case OtpStackStatus.idle:
+        _stacking = false;
         _borderController.stop();
         _borderController.value = 0;
         _fanController.stop();
@@ -302,6 +304,7 @@ class OtpStackFieldState extends State<OtpStackField>
         break;
 
       case OtpStackStatus.verifying:
+        _stacking = false;
         _unfocusAll();
         setState(() => _mode = _DisplayMode.fan);
         _fanController.forward(from: 0).then((_) {
@@ -316,11 +319,19 @@ class OtpStackFieldState extends State<OtpStackField>
         if (_fanController.status != AnimationStatus.completed) {
           _fanController.value = 1;
         }
-        setState(() => _mode = _DisplayMode.fan);
-        _stackController.forward(from: 0);
+        setState(() {
+          _mode = _DisplayMode.fan;
+          _stacking = true;
+        });
+        _stackController.forward(from: 0).then((_) {
+          if (mounted) {
+            setState(() => _stacking = false);
+          }
+        });
         break;
 
       case OtpStackStatus.error:
+        _stacking = false;
         _borderController.stop();
         setState(() => _mode = _DisplayMode.fan);
         _runErrorRestore();
@@ -563,7 +574,11 @@ class OtpStackFieldState extends State<OtpStackField>
       _stackController.value.clamp(0.0, 1.0),
     );
 
-    final isStacking = _status == OtpStackStatus.success;
+    // `isStacked` drives the collapsed position for the whole success state,
+    // while `isStacking` marks the short collapse animation itself (the
+    // reference's `stacking` phase) and only then shows the center overlay.
+    final isStacked = _status == OtpStackStatus.success;
+    final isStacking = _stacking;
     final isVerifying = _status == OtpStackStatus.verifying;
 
     return Stack(
@@ -581,10 +596,11 @@ class OtpStackFieldState extends State<OtpStackField>
               final angle = fanAngle * (1 - stackT);
 
               final isCenter = _isCenterCard(i, length);
-              final hideCenterDigit = (isVerifying || isStacking) && isCenter;
+              final hideCenterDigit =
+                  (isVerifying || isStacking || isStacked) && isCenter;
 
               return Positioned(
-                left: isStacking ? collapsedLeft : fanLeft,
+                left: isStacked ? collapsedLeft : fanLeft,
                 top: 10 + side.abs() * 1.4 * (1 - fanT),
                 child: Transform.rotate(
                   angle: angle,
@@ -592,7 +608,7 @@ class OtpStackFieldState extends State<OtpStackField>
                     width: cardWidth,
                     height: cardHeight,
                     borderColor: _fanBorderColor(i, length),
-                    child: isCenter && _status == OtpStackStatus.success
+                    child: isCenter && isStacked && !isStacking
                         ? Icon(
                             Icons.check_rounded,
                             color: widget.successColor,
@@ -616,9 +632,7 @@ class OtpStackFieldState extends State<OtpStackField>
             child: _otpCard(
               width: cardWidth,
               height: cardHeight,
-              borderColor: _status == OtpStackStatus.success
-                  ? widget.successColor
-                  : widget.primaryColor,
+              borderColor: widget.primaryColor,
               animatedBorder: true,
               child: isVerifying
                   ? SizedBox(
@@ -641,18 +655,13 @@ class OtpStackFieldState extends State<OtpStackField>
   }
 
   Color _fanBorderColor(int index, int length) {
-    switch (_status) {
-      case OtpStackStatus.success:
-        return widget.successColor;
-      case OtpStackStatus.error:
-        return widget.errorColor;
-      case OtpStackStatus.verifying:
-        return _isCenterCard(index, length)
-            ? widget.primaryColor
-            : const Color(0xFFABB8FF);
-      case OtpStackStatus.idle:
-        return const Color(0xFFABB8FF);
+    // Matches the reference: only the two center cards turn primary while
+    // verifying; every other card (including during success/error) stays the
+    // light blue used across the fan.
+    if (_status == OtpStackStatus.verifying && _isCenterCard(index, length)) {
+      return widget.primaryColor;
     }
+    return const Color(0xFFABB8FF);
   }
 
   bool _isCenterCard(int index, int length) {

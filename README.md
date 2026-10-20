@@ -74,7 +74,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
 | `idle`       | Shows the editable input cards.                                    |
 | `verifying`  | Fans the cards out and animates the loading border.                |
 | `success`    | Collapses the cards into one card with a checkmark.                |
-| `error`      | Flashes the error color, then fans back to editable cards.         |
+| `error`      | Holds the fan briefly, then fans back to editable cards.           |
 
 `onStatusChanged` is emitted when the widget returns to `idle` on its own
 (after the error animation), which is handy when the app mirrors the status.
@@ -115,7 +115,6 @@ OtpStackField(
   fanSpread: 15,
   primaryColor: Color(0xFF6675FF),
   successColor: Color(0xFF20A56B),
-  errorColor: Color(0xFFE15A5A),
   textStyle: TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
   cardTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
   keyboardType: TextInputType.number,
@@ -141,8 +140,12 @@ OtpStackField(
 | `height`        | `86`                        | Total field height.                           |
 | `fanSpread`     | `15`                        | How far outer cards spread from the center.   |
 | `primaryColor`  | `0xFF6675FF`                | Focus / verifying color.                      |
-| `successColor`  | `0xFF20A56B`                | Success color.                                |
-| `errorColor`    | `0xFFE15A5A`                | Error color.                                  |
+| `successColor`  | `0xFF20A56B`                | Success check color.                          |
+
+> The cards keep their light-blue border in every state; only the two center
+> cards turn `primaryColor` while verifying, exactly like the reference design.
+> Error feedback is shown by the app (status text/button), not by recoloring
+> the cards.
 
 ## Example
 
