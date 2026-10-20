@@ -1,4 +1,4 @@
-## 1.0.0
+## 0.0.3
 
 Stable release with an app-controlled status API and the fan/stack animation.
 

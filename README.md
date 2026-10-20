@@ -30,7 +30,7 @@ any state-management approach (or none at all).
 
 ```yaml
 dependencies:
-  otp_stack: ^1.0.0
+  otp_stack: ^0.0.3
 ```
 
 ```dart
