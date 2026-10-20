@@ -15,6 +15,41 @@ enum _DisplayMode {
   fan,
 }
 
+/// Keeps each field to a single character, while still letting a multi-digit
+/// paste through so the widget can distribute it across the fields.
+///
+/// A paste drops several characters in at once (the new value is longer than
+/// the old one by more than one), so it is passed through untouched. Typing a
+/// second digit into a field that already holds one replaces that digit
+/// instead of appending to it.
+class _OtpFieldFormatter extends TextInputFormatter {
+  const _OtpFieldFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final text = newValue.text;
+
+    // A paste replaces the whole value with several characters at once.
+    if (text.length > oldValue.text.length + 1) {
+      return newValue;
+    }
+
+    // Typing into a field that already holds a digit replaces it.
+    if (text.length > 1) {
+      final last = text.characters.last;
+      return TextEditingValue(
+        text: last,
+        selection: TextSelection.collapsed(offset: last.length),
+      );
+    }
+
+    return newValue;
+  }
+}
+
 /// An animated OTP input that fans its cards out while verifying and stacks
 /// them into a single success card.
 ///
@@ -414,6 +449,12 @@ class _OtpStackFieldState extends State<OtpStackField>
     await _fanController.reverse();
     if (!mounted || token != _errorToken) return;
 
+    // A wrong code resets the fields so the user can enter a new one.
+    for (final controller in _controllers) {
+      controller.clear();
+    }
+    _notifyChange();
+
     setState(() => _mode = _DisplayMode.input);
     widget.onRestored?.call(OtpStackStatus.idle);
     if (widget.autofocus) {
@@ -634,9 +675,11 @@ class _OtpStackFieldState extends State<OtpStackField>
                   (index == widget.length - 1
                       ? TextInputAction.done
                       : TextInputAction.next),
-              inputFormatters:
-                  widget.inputFormatters ??
-                  [FilteringTextInputFormatter.digitsOnly],
+              inputFormatters: [
+                if (_digitsOnly) FilteringTextInputFormatter.digitsOnly,
+                ...?widget.inputFormatters,
+                const _OtpFieldFormatter(),
+              ],
               maxLength: widget.length,
               decoration: const InputDecoration(
                 counterText: '',

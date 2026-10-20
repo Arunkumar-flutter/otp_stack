@@ -13,11 +13,13 @@ any state-management approach (or none at all).
 ## Features
 
 - Editable OTP cards with automatic focus movement and backspace support.
+- Each box holds exactly one digit; typing over a filled box replaces it.
 - Paste a full code into any field and every box fills in.
+- Configurable length — use 4, 6 (or any) digits.
 - Four app-controlled states: `idle`, `verifying`, `success`, `error`.
 - Fan-out animation on `verifying`, with a rotating gradient loading border.
 - Stack animation with a checkmark on `success`.
-- Automatic fan-back to editable cards on `error`, with an `onRestored` hook.
+- Wrong code resets the boxes to empty, with an `onRestored` hook.
 - SMS / email one-time-code autofill out of the box.
 - `enabled` / `readOnly`, custom `inputFormatters`, optional `errorText`, and
   an accessibility label.
@@ -76,11 +78,20 @@ class _VerifyScreenState extends State<VerifyScreen> {
 | `idle`       | Shows the editable input cards.                                    |
 | `verifying`  | Fans the cards out and animates the loading border.                |
 | `success`    | Collapses the cards into one card with a checkmark.                |
-| `error`      | Holds the fan briefly, then fans back to editable cards.           |
+| `error`      | Holds the fan briefly, then fans back and **clears the fields** so the user can retry. |
 
-When `error` finishes restoring the editable cards, `onRestored` fires with
-`OtpStackStatus.idle`. Use it to reset your own status so the UI and the field
-stay in sync.
+When `error` finishes restoring, `onRestored` fires with `OtpStackStatus.idle`
+and the boxes are empty. Use it to reset your own status so the UI and the
+field stay in sync.
+
+### Pin length
+
+`length` controls how many boxes are shown — 4, 6, or any value. The fan and
+stack animations adapt to it automatically.
+
+```dart
+OtpStackField(length: 4, status: _status, onCompleted: _onCompleted);
+```
 
 ### Using a controller
 

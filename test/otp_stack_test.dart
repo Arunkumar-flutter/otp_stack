@@ -313,4 +313,74 @@ void main() {
 
     expect(restored, OtpStackStatus.idle);
   });
+
+  testWidgets('clears the fields after an error', (tester) async {
+    final controller = OtpStackController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(wrap(OtpStackField(controller: controller)));
+    final fields = find.byType(TextField);
+    for (var i = 0; i < 6; i++) {
+      await tester.enterText(fields.at(i), '${i + 1}');
+      await tester.pump();
+    }
+    expect(controller.otp, '123456');
+
+    controller.setStatus(OtpStackStatus.error);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(controller.otp, '');
+    expect(find.byType(TextField), findsNWidgets(6));
+  });
+
+  testWidgets('supports a 4-digit code', (tester) async {
+    final controller = OtpStackController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      wrap(OtpStackField(length: 4, controller: controller)),
+    );
+    expect(find.byType(TextField), findsNWidgets(4));
+
+    final fields = find.byType(TextField);
+    for (var i = 0; i < 4; i++) {
+      await tester.enterText(fields.at(i), '${i + 1}');
+      await tester.pump();
+    }
+    expect(controller.otp, '1234');
+
+    controller.setStatus(OtpStackStatus.verifying);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    controller.setStatus(OtpStackStatus.success);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump();
+    expect(find.byIcon(Icons.check_rounded), findsNWidgets(2));
+  });
+
+  testWidgets('each field accepts only one digit', (tester) async {
+    await tester.pumpWidget(wrap(const OtpStackField()));
+    final fields = find.byType(TextField);
+
+    await tester.enterText(fields.at(0), '1');
+    await tester.pump();
+    // Typing a second digit replaces it instead of appending to the box.
+    await tester.enterText(fields.at(0), '12');
+    await tester.pump();
+
+    final values = tester
+        .widgetList<TextField>(fields)
+        .map((field) => field.controller!.text)
+        .toList();
+
+    expect(values[0], '2');
+    expect(values.where((value) => value.isNotEmpty).length, 1);
+  });
 }

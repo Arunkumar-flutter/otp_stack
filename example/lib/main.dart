@@ -36,6 +36,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   final _controller = OtpStackController();
   String _otp = '';
 
+  /// Number of pin boxes — switch between 4 and 6 to see the animations adapt.
+  int _length = 6;
+
   @override
   void initState() {
     super.initState();
@@ -121,7 +124,20 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   style: TextStyle(color: Color(0xFF777D95), fontSize: 14),
                 ),
                 const SizedBox(height: 42),
+                SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 4, label: Text('4 digits')),
+                    ButtonSegment(value: 6, label: Text('6 digits')),
+                  ],
+                  selected: {_length},
+                  onSelectionChanged: (selection) {
+                    setState(() => _length = selection.first);
+                    _controller.reset();
+                  },
+                ),
+                const SizedBox(height: 24),
                 OtpStackField(
+                  length: _length,
                   controller: _controller,
                   autofocus: true,
                   semanticLabel: 'One-time code',
